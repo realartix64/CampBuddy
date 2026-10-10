@@ -1,0 +1,33 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python virtual environments
+.venv/
+venv/
+
+# Python temporary files
+__pycache__/
+*.pyc
+
+# Node.js dependencies
+node_modules/
+
+# Build files
+dist/
+build/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+data/chromadb/
+
+# Sensitive files
+*.pem
+*.key
+
+# Operating system files
+.DS_Store
+Thumbs.db
