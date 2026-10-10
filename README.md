@@ -1,6 +1,6 @@
-# HikeBuddy — Offline AI Wilderness Assistant
+# CampBuddy — Offline AI Wilderness Assistant
 
-HikeBuddy is an offline, AI-powered wilderness assistant designed to provide hikers, campers, and outdoor enthusiasts with access to useful information in environments without internet or cellular connectivity.
+CampBuddy is an offline, AI-powered wilderness assistant designed to provide hikers, campers, and outdoor enthusiasts with access to useful information in environments without internet or cellular connectivity.
 
 The application transforms a laptop into a local AI server, allowing nearby devices, such as smartphones, to connect through a local Wi-Fi network and interact with AI models without relying on cloud-based services.
 
@@ -54,7 +54,7 @@ The project is currently in its initial development stage. Frontend and backend 
 
 ## Safety Disclaimer
 
-HikeBuddy is intended as an informational assistant and is not a substitute for professional medical advice, emergency services, certified wilderness training, or official navigation resources. AI-generated responses and image classifications may be inaccurate and should not be relied upon for critical safety decisions.
+CampBuddy is intended as an informational assistant and is not a substitute for professional medical advice, emergency services, certified wilderness training, or official navigation resources. AI-generated responses and image classifications may be inaccurate and should not be relied upon for critical safety decisions.
 
 ## License
 

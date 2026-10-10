@@ -1,7 +1,8 @@
+
 from fastapi import FastAPI
 
-app = FastAPI() 
+app = FastAPI(title="CampBuddy API")
 
 @app.get("/")
 def home():
-    return {"message": "Offline HikeBuddy API running"}
+    return {"message": "Offline CampBuddy API running"}

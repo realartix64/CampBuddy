@@ -1,5 +1,6 @@
+
 {
-  "name": "frontend",
+  "name": "campbuddy-frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
