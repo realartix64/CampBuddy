@@ -68,7 +68,7 @@ const THEMES = {
     toggleMoon: "text-stone-500",
     sendOn: "bg-green-800 text-white hover:bg-green-900",
     sendOff: "bg-stone-300 text-stone-600",
-    sendFocus: "focus-visible:ring-green-600 focus-visible:ring-offset-white",
+    sendFocus: "focus-visible:ring-[#888] focus-visible:ring-offset-white",
     attachBtn: "bg-stone-200 text-green-800 hover:bg-green-800 hover:text-white",
     thumbBorder: "border-stone-300",
     removeBtn: "border-stone-400 bg-white text-green-900 hover:bg-stone-200",
@@ -79,34 +79,34 @@ const THEMES = {
     mdCode: "bg-stone-200 text-green-900",
   },
   dark: {
-    root: "bg-stone-900 text-green-400",
-    text: "text-green-50",
-    muted: "text-green-500",
-    brand: "text-green-400",
-    sidebar: "border-green-950 bg-green-950",
-    closeBtn: "border-green-700 bg-green-900 text-green-300 hover:bg-green-800",
-    menuBtn: "text-green-400 hover:bg-stone-800",
-    chatItemIdle: "text-green-400 hover:bg-green-900",
+    root: "bg-[#101010] text-[#dedede]",
+    text: "text-[#f5f5f5]",
+    muted: "text-[#f5f5f5]0",
+    brand: "text-[#dedede]",
+    sidebar: "border-[#303030] bg-[#191919]",
+    closeBtn: "border-[#555] bg-[#303030] text-[#e5e5e5] hover:bg-[#353535]",
+    menuBtn: "text-[#dedede] hover:bg-[#242424]",
+    chatItemIdle: "text-[#dedede] hover:bg-[#303030]",
     fade: "from-stone-900 via-stone-900/90 to-transparent",
-    bar: "border-stone-700 bg-stone-800",
-    input: "text-green-400 placeholder-green-400/70",
-    divider: "border-stone-700",
+    bar: "border-[#373737] bg-[#242424]",
+    input: "text-[#dedede] placeholder-[#777]",
+    divider: "border-[#373737]",
     error: "border-red-900 bg-red-950 text-red-300",
-    toggleBox: "border-stone-700 bg-stone-800",
-    toggleHighlight: "bg-stone-600",
-    toggleSun: "text-stone-500",
-    toggleMoon: "text-green-300",
-    sendOn: "bg-green-500 text-green-950 hover:bg-green-400",
-    sendOff: "bg-stone-700 text-stone-400",
-    sendFocus: "focus-visible:ring-green-400 focus-visible:ring-offset-stone-800",
-    attachBtn: "bg-stone-700 text-green-400 hover:bg-green-500 hover:text-stone-800",
-    thumbBorder: "border-stone-600",
-    removeBtn: "border-stone-600 bg-stone-700 text-green-300 hover:bg-stone-600",
-    stopBtn: "bg-stone-700 text-green-300 hover:text-red-400",
-    mdStrong: "text-green-300",
-    mdLink: "text-green-300 hover:text-green-200",
-    mdQuote: "border-green-700 text-green-500",
-    mdCode: "bg-stone-700 text-green-300",
+    toggleBox: "border-[#373737] bg-[#242424]",
+    toggleHighlight: "bg-[#4b4b4b]",
+    toggleSun: "text-[#888888]",
+    toggleMoon: "text-[#e5e5e5]",
+    sendOn: "bg-[#e8e8e8] text-[#111111] hover:bg-[#fff]",
+    sendOff: "bg-[#343434] text-[#a0a0a0]",
+    sendFocus: "focus-visible:ring-[#aaa] focus-visible:ring-offset-stone-800",
+    attachBtn: "bg-[#343434] text-[#dedede] hover:bg-[#e8e8e8] hover:text-stone-800",
+    thumbBorder: "border-[#505050]",
+    removeBtn: "border-[#505050] bg-[#343434] text-[#e5e5e5] hover:bg-[#4b4b4b]",
+    stopBtn: "bg-[#343434] text-[#e5e5e5] hover:text-red-400",
+    mdStrong: "text-[#e5e5e5]",
+    mdLink: "text-[#e5e5e5] hover:text-[#fff]",
+    mdQuote: "border-[#555] text-[#f5f5f5]0",
+    mdCode: "bg-[#343434] text-[#e5e5e5]",
   },
 };
 
@@ -153,7 +153,7 @@ function ThemeToggle({ isDark, onToggle, t }) {
       aria-checked={isDark}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       onClick={onToggle}
-      className={`relative flex h-9 w-20 items-center rounded-xl border p-0.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.toggleBox}`}
+      className={`relative flex h-9 w-20 items-center rounded-xl border p-0.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${t.toggleBox}`}
     >
       {/* Sliding highlight rectangle */}
       <span
@@ -188,7 +188,7 @@ function ThemeToggle({ isDark, onToggle, t }) {
 function UserMessage({ content, image }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-green-800 px-4 py-2.5 text-green-50 shadow-sm md:max-w-[70%]">
+      <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-[#343434] px-4 py-2.5 text-[#f5f5f5] shadow-sm md:max-w-[70%]">
         {image && (
           <img
             src={image}
@@ -609,7 +609,7 @@ export default function App() {
           <span className={`min-w-0 truncate text-sm font-semibold tracking-tight md:text-lg ${t.brand}`}>CampBuddy</span>
           <button
             onClick={() => setSidebarOpen(false)}
-            className={`flex shrink-0 items-center justify-center rounded-md border p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 md:hidden ${t.closeBtn}`}
+            className={`flex shrink-0 items-center justify-center rounded-md border p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] md:hidden ${t.closeBtn}`}
             aria-label="Close history"
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
@@ -621,11 +621,11 @@ export default function App() {
         <div className="px-2 md:px-3">
           <button
             onClick={handleNewChat}
-            className={`group inline-flex items-center gap-2 rounded-lg border border-green-700 px-2 py-2 text-sm font-medium md:px-3 transition-colors hover:bg-green-700 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.brand}`}
+            className={`group inline-flex items-center gap-2 rounded-lg border border-[#555] px-2 py-2 text-sm font-medium md:px-3 transition-colors hover:bg-[#383838] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${t.brand}`}
           >
             <svg
               viewBox="0 0 24 24"
-              className="h-4 w-4 text-green-700 transition-colors group-hover:text-white"
+              className="h-4 w-4 text-[#999] transition-colors group-hover:text-white"
               fill="none"
               stroke="currentColor"
               strokeWidth="2.5"
@@ -651,9 +651,9 @@ export default function App() {
                 <li key={chat.id}>
                   <button
                     onClick={() => handleSelectChat(chat.id)}
-                    className={`w-full truncate rounded-lg px-2 py-2 text-left text-sm md:px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${
+                    className={`w-full truncate rounded-lg px-2 py-2 text-left text-sm md:px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${
                       chat.id === current.id
-                        ? "bg-green-800 text-green-50"
+                        ? "bg-[#343434] text-[#f5f5f5]"
                         : t.chatItemIdle
                     }`}
                   >
@@ -687,7 +687,7 @@ export default function App() {
         <header className="flex items-center gap-3 px-4 py-3">
           <button
             onClick={() => setSidebarOpen((o) => !o)}
-            className={`rounded-md p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.menuBtn}`}
+            className={`rounded-md p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${t.menuBtn}`}
             aria-label="Toggle chat history"
           >
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -741,7 +741,7 @@ export default function App() {
         >
           <div className="pointer-events-auto mx-auto max-w-3xl">
             <div
-              className={`relative rounded-2xl border shadow-lg focus-within:border-green-600 focus-within:ring-2 focus-within:ring-green-600/30 ${t.bar}`}
+              className={`relative rounded-2xl border shadow-lg focus-within:border-[#777] focus-within:ring-2 focus-within:ring-[#777]/30 ${t.bar}`}
             >
               {/* Attached image preview, with an x at its top right corner */}
               {image && (
@@ -756,7 +756,7 @@ export default function App() {
                       type="button"
                       onClick={clearImage}
                       aria-label="Remove image"
-                      className={`absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.removeBtn}`}
+                      className={`absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${t.removeBtn}`}
                     >
                       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
                         <path d="M6 6l12 12M18 6L6 18" />
@@ -790,7 +790,7 @@ export default function App() {
                 type="button"
                 onClick={() => setCameraOpen(true)}
                 aria-label="Take a photo with the camera"
-                className={`absolute bottom-3 left-[60px] flex h-10 w-10 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.attachBtn}`}
+                className={`absolute bottom-3 left-[60px] flex h-10 w-10 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${t.attachBtn}`}
               >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
@@ -803,7 +803,7 @@ export default function App() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 aria-label="Attach an image"
-                className={`absolute bottom-3 left-3 flex h-10 w-10 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.attachBtn}`}
+                className={`absolute bottom-3 left-3 flex h-10 w-10 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${t.attachBtn}`}
               >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -818,7 +818,7 @@ export default function App() {
                   type="button"
                   onClick={handleStop}
                   aria-label="Stop response"
-                  className={`absolute bottom-[22px] right-16 flex h-5 w-5 items-center justify-center rounded-full transition-colors before:absolute before:-inset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.stopBtn}`}
+                  className={`absolute bottom-[22px] right-16 flex h-5 w-5 items-center justify-center rounded-full transition-colors before:absolute before:-inset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${t.stopBtn}`}
                 >
                   <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="currentColor" aria-hidden="true">
                     <rect x="3" y="3" width="18" height="18" rx="2" />
