@@ -1,34 +1,35 @@
-export async function ask(question, plantCandidates = []) {
-  const res = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      question,
-      plant_candidates: plantCandidates
-    })
+// Keep whatever base URL your existing api.js uses; this is a placeholder.
+const API_BASE =
+  import.meta.env.VITE_API_BASE ?? `http://${window.location.hostname}:8000`;
+
+// Every request takes an optional AbortSignal. Aborting closes the connection,
+// which the backend detects and uses to stop generating.
+
+export async function classifyPlant(file, signal) {
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch(`${API_BASE}/api/classify`, {
+    method: "POST",
+    body: form,
+    signal,
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Request failed (${res.status})`);
+    throw new Error(err.detail || `Server error ${res.status}`);
   }
-
-  return res.json();
+  return res.json(); // { predictions: [{ species, score }, ...], device, warning }
 }
 
-export async function classifyPlant(imageBlob) {
-  const formData = new FormData();
-  formData.append('file', imageBlob, 'plant.jpg');
-
-  const res = await fetch('/api/classify', {
-    method: 'POST',
-    body: formData
+export async function ask(question, plantCandidates = [], signal) {
+  const res = await fetch(`${API_BASE}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, plant_candidates: plantCandidates }),
+    signal,
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Classification failed (${res.status})`);
-  }
-
+  if (!res.ok) throw new Error(`Server error ${res.status}`);
   return res.json();
 }

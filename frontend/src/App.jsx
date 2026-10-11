@@ -72,6 +72,7 @@ const THEMES = {
     attachBtn: "bg-stone-200 text-green-800 hover:bg-green-800 hover:text-white",
     thumbBorder: "border-stone-300",
     removeBtn: "border-stone-400 bg-white text-green-900 hover:bg-stone-200",
+    stopBtn: "bg-stone-200 text-green-900 hover:text-red-600",
     mdStrong: "text-green-950",
     mdLink: "text-green-700 hover:text-green-900",
     mdQuote: "border-green-600 text-green-800",
@@ -101,6 +102,7 @@ const THEMES = {
     attachBtn: "bg-stone-700 text-green-400 hover:bg-green-500 hover:text-stone-800",
     thumbBorder: "border-stone-600",
     removeBtn: "border-stone-600 bg-stone-700 text-green-300 hover:bg-stone-600",
+    stopBtn: "bg-stone-700 text-green-300 hover:text-red-400",
     mdStrong: "text-green-300",
     mdLink: "text-green-300 hover:text-green-200",
     mdQuote: "border-green-700 text-green-500",
@@ -213,6 +215,10 @@ function AssistantMessage({ message, t }) {
           </p>
         )}
 
+        {status === "stopped" && (
+          <p className={`py-2 text-sm ${t.muted}`}>Response stopped.</p>
+        )}
+
         {status === "error" && (
           <p className={`rounded-xl border px-4 py-2.5 ${t.error}`}>{content}</p>
         )}
@@ -307,6 +313,7 @@ function WebcamModal({ onCapture, onClose }) {
     if (!ready || !video?.videoWidth || !video?.videoHeight || capturing) return;
 
     setCapturing(true);
+
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -318,7 +325,6 @@ function WebcamModal({ onCapture, onClose }) {
         setCapturing(false);
         return;
       }
-
       onCapture(new File([blob], "webcam-plant.jpg", { type: "image/jpeg" }));
     }, "image/jpeg", 0.85);
   };
@@ -344,6 +350,7 @@ function WebcamModal({ onCapture, onClose }) {
         {!ready && !error && (
           <p className="mt-3 text-sm text-stone-300">Starting camera...</p>
         )}
+
         {error && (
           <p className="mt-3 text-sm text-red-300" role="alert">{error}</p>
         )}
@@ -395,6 +402,7 @@ export default function App() {
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
+  const controllersRef = useRef({}); // chatId -> AbortController for the request in flight
 
   const isDark = theme === "dark";
   const t = THEMES[theme];
@@ -450,17 +458,6 @@ export default function App() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
-  const handleWebcamCapture = (file) => {
-    if (file.size > MAX_IMAGE_BYTES) {
-      setAttachError("Captured photo is over 10 MB. Try a smaller image.");
-      setCameraOpen(false);
-      return;
-    }
-    setImage({ file, previewUrl: URL.createObjectURL(file) });
-    setAttachError("");
-    setCameraOpen(false);
-  };
-
   // ----- Image attachment -----
 
   const clearImage = () => {
@@ -487,6 +484,13 @@ export default function App() {
 
     setAttachError("");
     setImage({ file, previewUrl: URL.createObjectURL(file) });
+  };
+
+  // A webcam capture feeds the same attachment flow as a picked file.
+  const handleWebcamCapture = (file) => {
+    setAttachError("");
+    setImage({ file, previewUrl: URL.createObjectURL(file) });
+    setCameraOpen(false);
   };
 
   const handleSubmit = async () => {
@@ -518,6 +522,8 @@ export default function App() {
     }));
     setInput("");
     clearImage();
+    const controller = new AbortController();
+    controllersRef.current[chatId] = controller;
     setLoadingIds((ids) => [...ids, chatId]);
 
     const finish = (patch) =>
@@ -534,8 +540,9 @@ export default function App() {
       if (file) {
         let scan;
         try {
-          scan = await classifyPlant(file);
+          scan = await classifyPlant(file, controller.signal);
         } catch (err) {
+          if (err.name === "AbortError") throw err; // handled below
           finish({
             status: "error",
             content: `Could not scan the image. ${err.message || ""}`.trim(),
@@ -549,7 +556,7 @@ export default function App() {
       }
 
       // 2. Ask Llama, passing the (unverified) candidates along.
-      const data = await ask(question, candidates);
+      const data = await ask(question, candidates, controller.signal);
       finish({
         status: "done",
         content: data.answer,
@@ -561,14 +568,24 @@ export default function App() {
         },
       });
     } catch (err) {
+      if (err.name === "AbortError") {
+        finish({ status: "stopped", content: "" });
+        return;
+      }
       finish({
         status: "error",
         content:
           "Could not reach the CampBuddy server. Check that the backend and Ollama are running, then try again.",
       });
     } finally {
+      delete controllersRef.current[chatId];
       setLoadingIds((ids) => ids.filter((id) => id !== chatId));
     }
+  };
+
+  // Cancel the request in flight for the chat being viewed.
+  const handleStop = () => {
+    controllersRef.current[current.id]?.abort();
   };
 
   const handleKeyDown = (e) => {
@@ -582,13 +599,6 @@ export default function App() {
     <div
       className={`flex h-screen w-full overflow-hidden transition-colors duration-300 ${t.root}`}
     >
-      {cameraOpen && (
-        <WebcamModal
-          onCapture={handleWebcamCapture}
-          onClose={() => setCameraOpen(false)}
-        />
-      )}
-
       {/* ---------- Sidebar: chat history ---------- */}
       <aside
         className={`fixed inset-y-0 left-0 z-30 flex w-1/2 flex-col md:w-72 border-r transition-all duration-300 md:static ${t.sidebar} ${
@@ -662,6 +672,13 @@ export default function App() {
           className="fixed inset-0 z-20 bg-stone-900/30 md:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
+        />
+      )}
+
+      {cameraOpen && (
+        <WebcamModal
+          onCapture={handleWebcamCapture}
+          onClose={() => setCameraOpen(false)}
         />
       )}
 
@@ -768,6 +785,19 @@ export default function App() {
                 className="hidden"
               />
 
+              {/* Camera button: opens the webcam capture dialog */}
+              <button
+                type="button"
+                onClick={() => setCameraOpen(true)}
+                aria-label="Take a photo with the camera"
+                className={`absolute bottom-3 left-[60px] flex h-10 w-10 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.attachBtn}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+              </button>
+
               {/* Image button */}
               <button
                 type="button"
@@ -782,19 +812,19 @@ export default function App() {
                 </svg>
               </button>
 
-              {/* Capture a photo directly from the webcam */}
-              <button
-                type="button"
-                onClick={() => setCameraOpen(true)}
-                aria-label="Open webcam"
-                title="Open webcam"
-                className={`absolute bottom-3 left-16 flex h-10 w-10 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.attachBtn}`}
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M14 5h-4L8 8H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-4l-2-3Z" />
-                  <circle cx="12" cy="14" r="3" />
-                </svg>
-              </button>
+              {/* Stop button: only while a response is in flight. Half the size of send. */}
+              {isLoading && (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  aria-label="Stop response"
+                  className={`absolute bottom-[22px] right-16 flex h-5 w-5 items-center justify-center rounded-full transition-colors before:absolute before:-inset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.stopBtn}`}
+                >
+                  <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="currentColor" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                  </svg>
+                </button>
+              )}
 
               <button
                 onClick={handleSubmit}

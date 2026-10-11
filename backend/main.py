@@ -1,12 +1,14 @@
 
+import asyncio
+import threading
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from vision import classify_plant
-from llm import generate_response
+from llm import generate_response, GenerationCancelled
 from rag import ask_rag
 
 app = FastAPI(title="CampBuddy API")
@@ -37,9 +39,31 @@ def home():
     return {"message": "CampBuddy API running"}
 
 
+async def run_cancellable(http_request: Request, work):
+    """Run blocking work in a thread; if the client disconnects (the user
+    pressed stop), signal the worker to stop. Returns None when cancelled."""
+    cancel_event = threading.Event()
+    task = asyncio.create_task(asyncio.to_thread(work, cancel_event))
+
+    try:
+        while not task.done():
+            if await http_request.is_disconnected():
+                cancel_event.set()
+                try:
+                    await task
+                except GenerationCancelled:
+                    pass
+                return None
+            await asyncio.sleep(0.25)
+        return task.result()
+    except asyncio.CancelledError:
+        cancel_event.set()
+        raise
+
+
 # PIPELINE 1 + 3: Llama and contextual questions
 @app.post("/api/chat")
-def chat(request: ChatRequest):
+async def chat(request: ChatRequest, http_request: Request):
     question = request.question.strip()
 
     if not question:
@@ -78,20 +102,29 @@ Do not recommend consuming or handling unknown
 plants based on these predictions.
 """
 
-    # Use RAG when a local database exists
-    if (BASE_DIR / "chroma_db").exists():
-        result = ask_rag(question)
-        return result
+    use_rag = (BASE_DIR / "chroma_db").exists()
 
-    # Otherwise use general Llama knowledge
-    answer = generate_response(question)
+    def work(cancel_event):
+        # Use RAG when a local database exists
+        if use_rag:
+            return ask_rag(question, cancel_event)
 
-    return {
-        "answer": answer,
-        "reference_status": "General model knowledge only",
-        "used_references": False,
-        "sources": []
-    }
+        # Otherwise use general Llama knowledge
+        answer = generate_response(question, cancel_event)
+        return {
+            "answer": answer,
+            "reference_status": "General model knowledge only",
+            "used_references": False,
+            "sources": []
+        }
+
+    result = await run_cancellable(http_request, work)
+
+    if result is None:
+        # Client cancelled; nobody is listening for this response.
+        return Response(status_code=499)
+
+    return result
 
 
 # PIPELINE 2: MobileNetV3 classification
