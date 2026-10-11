@@ -251,6 +251,125 @@ function AssistantMessage({ message, t }) {
   );
 }
 
+// Capture a still image from the webcam. The existing image attachment flow
+// handles previewing, classification and sending the photo to the chatbot.
+function WebcamModal({ onCapture, onClose }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [error, setError] = useState("");
+  const [ready, setReady] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function openCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError("Camera access requires a supported browser on localhost or HTTPS.");
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+          audio: false,
+        });
+
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (!video) return;
+
+        video.srcObject = stream;
+        await video.play();
+        if (!cancelled) setReady(true);
+      } catch (err) {
+        if (!cancelled) setError(`Could not access webcam: ${err.message}`);
+      }
+    }
+
+    openCamera();
+
+    return () => {
+      cancelled = true;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
+  }, []);
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!ready || !video?.videoWidth || !video?.videoHeight || capturing) return;
+
+    setCapturing(true);
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setError("Could not capture image. Try again.");
+        setCapturing(false);
+        return;
+      }
+
+      onCapture(new File([blob], "webcam-plant.jpg", { type: "image/jpeg" }));
+    }, "image/jpeg", 0.85);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Capture plant photo"
+    >
+      <div className="w-full max-w-xl rounded-2xl bg-stone-900 p-5 text-white shadow-xl">
+        <h2 className="mb-4 text-xl font-semibold">Scan a plant</h2>
+
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="w-full rounded-xl bg-black"
+        />
+
+        {!ready && !error && (
+          <p className="mt-3 text-sm text-stone-300">Starting camera...</p>
+        )}
+        {error && (
+          <p className="mt-3 text-sm text-red-300" role="alert">{error}</p>
+        )}
+
+        <div className="mt-4 flex justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg bg-stone-700 px-4 py-2 hover:bg-stone-600"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={capturePhoto}
+            disabled={!ready || capturing}
+            className="rounded-lg bg-green-600 px-4 py-2 font-medium hover:bg-green-500 disabled:opacity-50"
+          >
+            {capturing ? "Capturing..." : "Capture photo"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- App ----------
 
 export default function App() {
@@ -266,6 +385,7 @@ export default function App() {
   const [input, setInput] = useState("");
   const [image, setImage] = useState(null); // { file, previewUrl } waiting to be sent
   const [attachError, setAttachError] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [loadingIds, setLoadingIds] = useState([]); // chats with a request in flight
   const [theme, setTheme] = useState("dark"); // app starts in dark mode
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -328,6 +448,17 @@ export default function App() {
   const handleSelectChat = (id) => {
     setActiveId(id);
     if (window.innerWidth < 768) setSidebarOpen(false);
+  };
+
+  const handleWebcamCapture = (file) => {
+    if (file.size > MAX_IMAGE_BYTES) {
+      setAttachError("Captured photo is over 10 MB. Try a smaller image.");
+      setCameraOpen(false);
+      return;
+    }
+    setImage({ file, previewUrl: URL.createObjectURL(file) });
+    setAttachError("");
+    setCameraOpen(false);
   };
 
   // ----- Image attachment -----
@@ -451,6 +582,13 @@ export default function App() {
     <div
       className={`flex h-screen w-full overflow-hidden transition-colors duration-300 ${t.root}`}
     >
+      {cameraOpen && (
+        <WebcamModal
+          onCapture={handleWebcamCapture}
+          onClose={() => setCameraOpen(false)}
+        />
+      )}
+
       {/* ---------- Sidebar: chat history ---------- */}
       <aside
         className={`fixed inset-y-0 left-0 z-30 flex w-1/2 flex-col md:w-72 border-r transition-all duration-300 md:static ${t.sidebar} ${
@@ -641,6 +779,20 @@ export default function App() {
                   <rect x="3" y="3" width="18" height="18" rx="2" />
                   <circle cx="9" cy="9" r="1.5" />
                   <path d="M21 15l-5-5L5 21" />
+                </svg>
+              </button>
+
+              {/* Capture a photo directly from the webcam */}
+              <button
+                type="button"
+                onClick={() => setCameraOpen(true)}
+                aria-label="Open webcam"
+                title="Open webcam"
+                className={`absolute bottom-3 left-16 flex h-10 w-10 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.attachBtn}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M14 5h-4L8 8H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-4l-2-3Z" />
+                  <circle cx="12" cy="14" r="3" />
                 </svg>
               </button>
 
