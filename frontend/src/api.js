@@ -1,4 +1,3 @@
-
 export async function ask(question, plantCandidates = []) {
   const res = await fetch('/api/chat', {
     method: 'POST',

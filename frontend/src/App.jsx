@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
-import { ask } from "./api";
+import { ask, classifyPlant } from "./api";
 import usePersistentState from './persistentStorage.js'
 
 // crypto.randomUUID() needs a secure context, and a phone reaching the laptop
@@ -8,7 +8,38 @@ import usePersistentState from './persistentStorage.js'
 const makeId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-const newChat = () => ({ id: makeId(), title: "New chat", messages: [] });
+const newChat = () => ({
+  id: makeId(),
+  title: "New chat",
+  messages: [],
+  plantCandidates: [],
+});
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // matches the 10 MB limit in main.py
+const DEFAULT_IMAGE_QUESTION = "What might this plant be, and is it safe to touch or eat?";
+
+// Shrink the photo to a small JPEG data URL for the chat history. Storing the
+// full photo (or a blob: URL, which dies on reload) in persistent storage
+// would either bloat it or break.
+const makeThumbnail = (file, maxSize = 240) =>
+  new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.7));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    img.src = url;
+  });
 
 // ---------- Theme presets ----------
 // Every theme-dependent Tailwind class lives here as a full literal string, so
@@ -38,6 +69,9 @@ const THEMES = {
     sendOn: "bg-green-800 text-white hover:bg-green-900",
     sendOff: "bg-stone-300 text-stone-600",
     sendFocus: "focus-visible:ring-green-600 focus-visible:ring-offset-white",
+    attachBtn: "bg-stone-200 text-green-800 hover:bg-green-800 hover:text-white",
+    thumbBorder: "border-stone-300",
+    removeBtn: "border-stone-400 bg-white text-green-900 hover:bg-stone-200",
     mdStrong: "text-green-950",
     mdLink: "text-green-700 hover:text-green-900",
     mdQuote: "border-green-600 text-green-800",
@@ -64,6 +98,9 @@ const THEMES = {
     sendOn: "bg-green-500 text-green-950 hover:bg-green-400",
     sendOff: "bg-stone-700 text-stone-400",
     sendFocus: "focus-visible:ring-green-400 focus-visible:ring-offset-stone-800",
+    attachBtn: "bg-stone-700 text-green-400 hover:bg-green-500 hover:text-stone-800",
+    thumbBorder: "border-stone-600",
+    removeBtn: "border-stone-600 bg-stone-700 text-green-300 hover:bg-stone-600",
     mdStrong: "text-green-300",
     mdLink: "text-green-300 hover:text-green-200",
     mdQuote: "border-green-700 text-green-500",
@@ -146,10 +183,17 @@ function ThemeToggle({ isDark, onToggle, t }) {
   );
 }
 
-function UserMessage({ content }) {
+function UserMessage({ content, image }) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-green-800 px-4 py-2.5 text-green-50 shadow-sm md:max-w-[70%]">
+        {image && (
+          <img
+            src={image}
+            alt="Uploaded plant"
+            className="mb-2 max-h-48 rounded-lg object-cover"
+          />
+        )}
         {content}
       </div>
     </div>
@@ -164,7 +208,9 @@ function AssistantMessage({ message, t }) {
     <div className="flex justify-start">
       <div className="max-w-[92%] md:max-w-[80%]">
         {status === "pending" && (
-          <p className={`animate-pulse py-2 ${t.muted}`}>Thinking...</p>
+          <p className={`animate-pulse py-2 ${t.muted}`}>
+            {message.stage === "scanning" ? "Scanning image..." : "Thinking..."}
+          </p>
         )}
 
         {status === "error" && (
@@ -173,6 +219,19 @@ function AssistantMessage({ message, t }) {
 
         {status === "done" && (
           <>
+            {meta?.candidates?.length > 0 && (
+              <div className={`mb-2 rounded-xl border px-3 py-2 text-sm ${t.divider} ${t.muted}`}>
+                <p className="font-medium">Possible matches (unverified)</p>
+                <ul className="mt-1 space-y-0.5">
+                  {meta.candidates.map((c, i) => (
+                    <li key={i}>
+                      {c.species} ({(c.score * 100).toFixed(0)}%)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className={t.text}>
               <ReactMarkdown components={mdComponents}>{content}</ReactMarkdown>
             </div>
@@ -205,6 +264,8 @@ export default function App() {
       null
   );
   const [input, setInput] = useState("");
+  const [image, setImage] = useState(null); // { file, previewUrl } waiting to be sent
+  const [attachError, setAttachError] = useState("");
   const [loadingIds, setLoadingIds] = useState([]); // chats with a request in flight
   const [theme, setTheme] = useState("dark"); // app starts in dark mode
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -213,6 +274,7 @@ export default function App() {
 
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const isDark = theme === "dark";
   const t = THEMES[theme];
@@ -221,7 +283,7 @@ export default function App() {
   const current = chats.find((c) => c.id === activeId) ?? chats[0];
   const isEmpty = current.messages.length === 0;
   const isLoading = loadingIds.includes(current.id);
-  const sendDisabled = !input.trim() || isLoading;
+  const sendDisabled = (!input.trim() && !image) || isLoading;
   // Only chats with at least one message appear in the history list.
   const savedChats = chats.filter((c) => c.messages.length > 0);
 
@@ -238,6 +300,13 @@ export default function App() {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [input]);
 
+  // Release the preview's blob URL when it is replaced or the app unmounts.
+  useEffect(() => {
+    return () => {
+      if (image?.previewUrl) URL.revokeObjectURL(image.previewUrl);
+    };
+  }, [image]);
+
   const updateChat = (chatId, updater) =>
     setChats((prev) => prev.map((c) => (c.id === chatId ? updater(c) : c)));
 
@@ -252,6 +321,7 @@ export default function App() {
       setActiveId(chat.id);
     }
     setInput("");
+    clearImage();
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
@@ -260,23 +330,63 @@ export default function App() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
-  const handleSubmit = async () => {
-    const question = input.trim();
-    if (!question || isLoading) return;
+  // ----- Image attachment -----
 
+  const clearImage = () => {
+    setImage(null);
+    setAttachError("");
+    // Reset the input so choosing the same file again still fires onChange.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setAttachError("Please choose an image file.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setAttachError("That image is over 10 MB. Choose a smaller one.");
+      e.target.value = "";
+      return;
+    }
+
+    setAttachError("");
+    setImage({ file, previewUrl: URL.createObjectURL(file) });
+  };
+
+  const handleSubmit = async () => {
+    const typed = input.trim();
+    if ((!typed && !image) || isLoading) return;
+
+    const question = typed || DEFAULT_IMAGE_QUESTION;
+    const file = image?.file ?? null;
     const chatId = current.id;
     const assistantId = makeId();
+    const existingCandidates = current.plantCandidates ?? [];
+
+    const thumb = file ? await makeThumbnail(file) : null;
 
     updateChat(chatId, (c) => ({
       ...c,
       title: c.messages.length === 0 ? question.slice(0, 40) : c.title,
       messages: [
         ...c.messages,
-        { id: makeId(), role: "user", content: question },
-        { id: assistantId, role: "assistant", status: "pending", content: "" },
+        { id: makeId(), role: "user", content: typed, image: thumb },
+        {
+          id: assistantId,
+          role: "assistant",
+          status: "pending",
+          stage: file ? "scanning" : "thinking",
+          content: "",
+        },
       ],
     }));
     setInput("");
+    clearImage();
     setLoadingIds((ids) => [...ids, chatId]);
 
     const finish = (patch) =>
@@ -286,7 +396,29 @@ export default function App() {
       }));
 
     try {
-      const data = await ask(question);
+      // 1. If a photo was attached, get the top candidate species first.
+      let candidates = existingCandidates;
+      let newCandidates = null;
+
+      if (file) {
+        let scan;
+        try {
+          scan = await classifyPlant(file);
+        } catch (err) {
+          finish({
+            status: "error",
+            content: `Could not scan the image. ${err.message || ""}`.trim(),
+          });
+          return;
+        }
+        newCandidates = scan.predictions ?? [];
+        candidates = newCandidates;
+        updateChat(chatId, (c) => ({ ...c, plantCandidates: newCandidates }));
+        finish({ stage: "thinking" });
+      }
+
+      // 2. Ask Llama, passing the (unverified) candidates along.
+      const data = await ask(question, candidates);
       finish({
         status: "done",
         content: data.answer,
@@ -294,6 +426,7 @@ export default function App() {
           reference_status: data.reference_status,
           used_references: data.used_references,
           sources: data.sources ?? [],
+          candidates: newCandidates ?? [],
         },
       });
     } catch (err) {
@@ -424,7 +557,7 @@ export default function App() {
           <div className="mx-auto max-w-3xl space-y-6 pb-44 pt-4">
             {current.messages.map((m) =>
               m.role === "user" ? (
-                <UserMessage key={m.id} content={m.content} />
+                <UserMessage key={m.id} content={m.content} image={m.image} />
               ) : (
                 <AssistantMessage key={m.id} message={m} t={t} />
               )
@@ -455,15 +588,62 @@ export default function App() {
             <div
               className={`relative rounded-2xl border shadow-lg focus-within:border-green-600 focus-within:ring-2 focus-within:ring-green-600/30 ${t.bar}`}
             >
+              {/* Attached image preview, with an x at its top right corner */}
+              {image && (
+                <div className="px-4 pt-4">
+                  <div className="relative inline-block">
+                    <img
+                      src={image.previewUrl}
+                      alt="Image to send"
+                      className={`h-20 w-20 rounded-lg border object-cover ${t.thumbBorder}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={clearImage}
+                      aria-label="Remove image"
+                      className={`absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.removeBtn}`}
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6L6 18" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 rows={1}
-                placeholder="Ask CampBuddy a question"
+                placeholder={image ? "Ask about this plant (optional)" : "Ask CampBuddy a question"}
                 className={`block w-full resize-none rounded-2xl bg-transparent px-4 pb-14 pt-4 focus:outline-none ${t.input}`}
               />
+
+              {/* Hidden file picker; on phones this offers camera or gallery */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+
+              {/* Image button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach an image"
+                className={`absolute bottom-3 left-3 flex h-10 w-10 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.attachBtn}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="9" cy="9" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+              </button>
+
               <button
                 onClick={handleSubmit}
                 disabled={sendDisabled}
@@ -477,6 +657,12 @@ export default function App() {
                 </svg>
               </button>
             </div>
+
+            {attachError && (
+              <p className={`mt-2 text-center text-xs ${isDark ? "text-red-300" : "text-red-700"}`} role="alert">
+                {attachError}
+              </p>
+            )}
             <p className={`mt-2 text-center text-xs ${t.muted}`}>
               CampBuddy can be wrong. Don't rely on it for emergencies or for deciding what is safe to eat or drink.
             </p>
