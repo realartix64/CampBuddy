@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { ask } from "./api";
+import usePersistentState from './persistentStorage.js'
 
 // crypto.randomUUID() needs a secure context, and a phone reaching the laptop
 // over http://<local-ip> is not one, so use a simple id generator instead.
@@ -21,8 +22,8 @@ const THEMES = {
     text: "text-green-950",
     muted: "text-green-700",
     brand: "text-green-900",
-    sidebar: "border-stone-300 bg-stone-100",
-    closeBtn: "text-green-700 hover:bg-stone-200",
+    sidebar: "border-stone-100 bg-stone-100",
+    closeBtn: "border-stone-400 bg-stone-200 text-green-900 hover:bg-stone-300",
     menuBtn: "text-green-800 hover:bg-stone-200",
     chatItemIdle: "text-green-950 hover:bg-stone-200",
     fade: "from-white via-white/90 to-transparent",
@@ -47,8 +48,8 @@ const THEMES = {
     text: "text-green-50",
     muted: "text-green-500",
     brand: "text-green-400",
-    sidebar: "border-green-800 bg-green-950",
-    closeBtn: "text-green-500 hover:bg-green-900",
+    sidebar: "border-green-950 bg-green-950",
+    closeBtn: "border-green-700 bg-green-900 text-green-300 hover:bg-green-800",
     menuBtn: "text-green-400 hover:bg-stone-800",
     chatItemIdle: "text-green-400 hover:bg-green-900",
     fade: "from-stone-900 via-stone-900/90 to-transparent",
@@ -176,15 +177,12 @@ function AssistantMessage({ message, t }) {
               <ReactMarkdown components={mdComponents}>{content}</ReactMarkdown>
             </div>
 
-            {meta && (
+            {meta?.sources?.length > 0 && (
               <div className={`mt-2 border-t pt-2 text-xs ${t.divider} ${t.muted}`}>
-                <p>{meta.reference_status}</p>
-                {meta.sources?.length > 0 && (
-                  <p className="mt-0.5">
-                    Sources:{" "}
-                    {meta.sources.map((s) => `${s.source}, page ${s.page}`).join("; ")}
-                  </p>
-                )}
+                <p>
+                  Sources:{" "}
+                  {meta.sources.map((s) => `${s.source}, page ${s.page}`).join("; ")}
+                </p>
               </div>
             )}
           </>
@@ -197,8 +195,15 @@ function AssistantMessage({ message, t }) {
 // ---------- App ----------
 
 export default function App() {
-  const [chats, setChats] = useState(() => [newChat()]);
-  const [activeId, setActiveId] = useState(null);
+  const [chats, setChats] = usePersistentState(
+      "chats",
+      () => [newChat()]
+  );
+
+  const [activeId, setActiveId] = usePersistentState(
+      "active-chat",
+      null
+  );
   const [input, setInput] = useState("");
   const [loadingIds, setLoadingIds] = useState([]); // chats with a request in flight
   const [theme, setTheme] = useState("dark"); // app starts in dark mode
@@ -217,6 +222,8 @@ export default function App() {
   const isEmpty = current.messages.length === 0;
   const isLoading = loadingIds.includes(current.id);
   const sendDisabled = !input.trim() || isLoading;
+  // Only chats with at least one message appear in the history list.
+  const savedChats = chats.filter((c) => c.messages.length > 0);
 
   // Keep the newest message in view.
   useEffect(() => {
@@ -313,48 +320,69 @@ export default function App() {
     >
       {/* ---------- Sidebar: chat history ---------- */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-72 flex-col border-r transition-all duration-300 md:static ${t.sidebar} ${
+        className={`fixed inset-y-0 left-0 z-30 flex w-1/2 flex-col md:w-72 border-r transition-all duration-300 md:static ${t.sidebar} ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:hidden"
         }`}
       >
-        <div className="flex items-center justify-between px-4 py-4">
-          <span className={`text-lg font-semibold tracking-tight ${t.brand}`}>CampBuddy</span>
+        <div className="flex items-center justify-between gap-1 px-2 py-4 md:px-4">
+          <span className={`min-w-0 truncate text-sm font-semibold tracking-tight md:text-lg ${t.brand}`}>CampBuddy</span>
           <button
             onClick={() => setSidebarOpen(false)}
-            className={`rounded-md px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 md:hidden ${t.closeBtn}`}
+            className={`flex shrink-0 items-center justify-center rounded-md border p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 md:hidden ${t.closeBtn}`}
             aria-label="Close history"
           >
-            Close
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
           </button>
         </div>
 
-        <div className="px-3">
+        <div className="px-2 md:px-3">
           <button
             onClick={handleNewChat}
-            className="w-full rounded-lg border border-green-700 px-3 py-2 text-left text-sm font-medium text-green-800 transition-colors hover:bg-green-700 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600"
+            className={`group inline-flex items-center gap-2 rounded-lg border border-green-700 px-2 py-2 text-sm font-medium md:px-3 transition-colors hover:bg-green-700 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${t.brand}`}
           >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4 text-green-700 transition-colors group-hover:text-white"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
             New chat
           </button>
         </div>
 
-        <nav className="mt-4 flex-1 overflow-y-auto px-3 pb-4" aria-label="Chat history">
-          <ul className="space-y-1">
-            {chats.map((chat) => (
-              <li key={chat.id}>
-                <button
-                  onClick={() => handleSelectChat(chat.id)}
-                  className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${
-                    chat.id === current.id
-                      ? "bg-green-800 text-green-50"
-                      : t.chatItemIdle
-                  }`}
-                >
-                  {chat.title}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        {savedChats.length > 0 && (
+          <nav
+            className={`mx-2 mt-4 flex-1 overflow-y-auto md:mx-3 border-t pb-4 pt-4 ${t.divider}`}
+            aria-labelledby="chat-history-heading"
+          >
+            <h2 id="chat-history-heading" className={`px-2 pb-2 text-xs font-medium md:px-3 ${t.brand}`}>
+              Chat history
+            </h2>
+            <ul className="space-y-1">
+              {savedChats.map((chat) => (
+                <li key={chat.id}>
+                  <button
+                    onClick={() => handleSelectChat(chat.id)}
+                    className={`w-full truncate rounded-lg px-2 py-2 text-left text-sm md:px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${
+                      chat.id === current.id
+                        ? "bg-green-800 text-green-50"
+                        : t.chatItemIdle
+                    }`}
+                  >
+                    {chat.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
       </aside>
 
       {/* Backdrop for the mobile slide-over */}
