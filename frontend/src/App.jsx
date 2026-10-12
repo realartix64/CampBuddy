@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { ThinkingOrb } from "thinking-orbs";
-import { ask, classifyPlant } from "./api";
+import { ask, classifyPlant, transcribeAudio } from "./api";
 import usePersistentState from './persistentStorage.js'
 
 // crypto.randomUUID() needs a secure context, and a phone reaching the laptop
@@ -392,6 +392,10 @@ export default function App() {
   const [image, setImage] = useState(null); // { file, previewUrl } waiting to be sent
   const [attachError, setAttachError] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [voiceReplies, setVoiceReplies] = useState(true);
+  const [voiceError, setVoiceError] = useState("");
   const [loadingIds, setLoadingIds] = useState([]); // chats with a request in flight
   const [theme, setTheme] = useState("dark"); // app starts in dark mode
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -402,6 +406,8 @@ export default function App() {
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const controllersRef = useRef({}); // chatId -> AbortController for the request in flight
+  const recorderRef = useRef(null);
+  const recordingStreamRef = useRef(null);
 
   const isDark = theme === "dark";
   const t = THEMES[theme];
@@ -518,8 +524,8 @@ export default function App() {
     setCameraOpen(false);
   };
 
-  const handleSubmit = async () => {
-    const typed = input.trim();
+  const handleSubmit = async (spokenQuestion = null) => {
+    const typed = typeof spokenQuestion === "string" ? spokenQuestion.trim() : input.trim();
     if ((!typed && !image) || isLoading) return;
 
     const question = typed || DEFAULT_IMAGE_QUESTION;
@@ -592,6 +598,12 @@ export default function App() {
           candidates: newCandidates ?? [],
         },
       });
+      if (voiceReplies && typeof window !== "undefined" && window.speechSynthesis && data.answer) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(data.answer.replace(/[#*_`]/g, ""));
+        utterance.rate = 1;
+        window.speechSynthesis.speak(utterance);
+      }
     } catch (err) {
       if (err.name === "AbortError") {
         finish({ status: "stopped", content: "" });
@@ -608,9 +620,65 @@ export default function App() {
     }
   };
 
+  // Record speech and transcribe locally through the FastAPI server.
+  const handleMic = async () => {
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
+    if (isLoading || transcribing) return;
+    setVoiceError("");
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+        throw new Error("Microphone recording requires localhost or a secure browser context.");
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
+      const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg"].find((x) => MediaRecorder.isTypeSupported(x));
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorderRef.current = recorder;
+      const chunks = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.onstop = async () => {
+        setRecording(false);
+        stream.getTracks().forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        recorderRef.current = null;
+        if (!chunks.length) return;
+        setTranscribing(true);
+        try {
+          const clip = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+          const result = await transcribeAudio(clip);
+          if (result.text?.trim()) {
+            setInput(result.text.trim());
+            await handleSubmit(result.text.trim());
+          }
+        } catch (error) {
+          setVoiceError(error.message || "Could not transcribe speech.");
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      recorder.start();
+      setRecording(true);
+    } catch (error) {
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+      setVoiceError(error.message || "Microphone unavailable.");
+      setRecording(false);
+    }
+  };
+
+  useEffect(() => () => {
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    window.speechSynthesis?.cancel();
+  }, []);
+
   // Cancel the request in flight for the chat being viewed.
   const handleStop = () => {
     controllersRef.current[current.id]?.abort();
+    window.speechSynthesis?.cancel();
   };
 
   const handleKeyDown = (e) => {
@@ -870,6 +938,34 @@ export default function App() {
                 </svg>
               </button>
 
+              {/* Voice input: click once to record, again to transcribe and send. */}
+              <button
+                type="button"
+                onClick={handleMic}
+                disabled={isLoading || transcribing}
+                aria-label={recording ? "Stop recording and send voice question" : "Record a voice question"}
+                title={recording ? "Stop recording" : "Ask by voice"}
+                className={`absolute bottom-3 left-[108px] flex h-10 w-10 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${recording ? "bg-red-600 text-white animate-pulse" : t.attachBtn}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <rect x="9" y="2" width="6" height="12" rx="3" />
+                  <path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8" />
+                </svg>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setVoiceReplies((enabled) => !enabled);
+                  window.speechSynthesis?.cancel();
+                }}
+                aria-label={voiceReplies ? "Turn spoken responses off" : "Turn spoken responses on"}
+                title={voiceReplies ? "Spoken replies on" : "Spoken replies off"}
+                className={`absolute bottom-[19px] right-[112px] rounded-lg px-2 py-1 text-xs font-semibold ${t.attachBtn}`}
+              >
+                {voiceReplies ? "Voice on" : "Voice off"}
+              </button>
+
               {/* Stop button: only while a response is in flight. Half the size of send. */}
               {isLoading && (
                 <button
@@ -898,6 +994,12 @@ export default function App() {
               </button>
             </div>
 
+            {(recording || transcribing) && (
+              <p className={`mt-2 text-center text-xs ${t.muted}`} role="status">
+                {recording ? "Recording… press the microphone again to send" : "Transcribing speech locally…"}
+              </p>
+            )}
+            {voiceError && <p role="alert" className="mt-2 text-center text-xs text-red-500">{voiceError}</p>}
             {attachError && (
               <p className={`mt-2 text-center text-xs ${isDark ? "text-red-300" : "text-red-700"}`} role="alert">
                 {attachError}
