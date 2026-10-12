@@ -725,7 +725,7 @@ export default function App() {
           <div className="pointer-events-none absolute inset-x-0 top-[43%] z-10 flex justify-center px-4">
             <div className={`flex min-w-52 flex-col items-center gap-3 rounded-3xl border px-9 py-7 shadow-2xl backdrop-blur-lg ${isDark ? "border-[#454545] bg-[#202020]/95 text-[#ededed]" : "border-green-200 bg-white/95 text-green-900"}`} role="status" aria-live="polite">
               <div className={`rounded-full p-5 ${isDark ? "bg-[#303030]" : "bg-green-50"}`}>
-                <ThinkingOrb state="working" size={64} speed={1.2} dark={isDark} aria-label="CampBuddy is thinking" />
+                <ThinkingOrb state="working" size={64} speed={1.2} theme={isDark ? "dark" : "light"} aria-label="CampBuddy is thinking" />
               </div>
               <span className="text-sm font-semibold tracking-wide">CampBuddy is thinking...</span>
               <span className={`text-center text-xs ${t.muted}`}>Generating a local AI response</span>
