@@ -33,3 +33,18 @@ export async function ask(question, plantCandidates = [], signal) {
   if (!res.ok) throw new Error(`Server error ${res.status}`);
   return res.json();
 }
+
+export async function transcribeAudio(blob, signal) {
+  const form = new FormData();
+  form.append("file", blob, "campbuddy-recording.webm");
+  const res = await fetch(`${API_BASE}/api/transcribe`, {
+    method: "POST",
+    body: form,
+    signal,
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || `Transcription failed (${res.status})`);
+  }
+  return res.json();
+}
