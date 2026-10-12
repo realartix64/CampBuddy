@@ -158,7 +158,7 @@ def retrieve_documents(
 # STEP 3: GENERATE RAG RESPONSE
 # ==========================================
 
-def ask_rag(question):
+def ask_rag(question, cancel_event=None):
 
     # Retrieve potentially relevant documents
     docs = retrieve_documents(question)
@@ -245,7 +245,7 @@ USER QUESTION:
 """
 
     # Generate response using Llama 3.2
-    answer = generate_response(prompt)
+    answer = generate_response(prompt, cancel_event)
 
     # Build source information
     sources = []
