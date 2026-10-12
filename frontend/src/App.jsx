@@ -457,6 +457,32 @@ export default function App() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
+  const handleDeleteChat = (id) => {
+    controllersRef.current[id]?.abort();
+    delete controllersRef.current[id];
+    setLoadingIds((ids) => ids.filter((chatId) => chatId !== id));
+    const remaining = chats.filter((chat) => chat.id !== id);
+    if (remaining.length === 0) remaining.push(newChat());
+    setChats(remaining);
+    if (activeId === id) {
+      setActiveId(remaining[0].id);
+      setInput("");
+      clearImage();
+    }
+  };
+
+  const handleClearAllChats = () => {
+    if (!window.confirm("Delete all chat history? This cannot be undone.")) return;
+    Object.values(controllersRef.current).forEach((controller) => controller.abort());
+    controllersRef.current = {};
+    setLoadingIds([]);
+    const chat = newChat();
+    setChats([chat]);
+    setActiveId(chat.id);
+    setInput("");
+    clearImage();
+  };
+
   // ----- Image attachment -----
 
   const clearImage = () => {
@@ -642,21 +668,41 @@ export default function App() {
             className={`mx-2 mt-4 flex-1 overflow-y-auto md:mx-3 border-t pb-4 pt-4 ${t.divider}`}
             aria-labelledby="chat-history-heading"
           >
-            <h2 id="chat-history-heading" className={`px-2 pb-2 text-xs font-medium md:px-3 ${t.brand}`}>
-              Chat history
-            </h2>
+            <div className="flex items-center justify-between gap-2 px-2 pb-2 md:px-3">
+              <h2 id="chat-history-heading" className={`text-xs font-medium ${t.brand}`}>
+                Chat history
+              </h2>
+              <button
+                type="button"
+                onClick={handleClearAllChats}
+                className={`text-xs underline underline-offset-2 hover:text-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${t.brand}`}
+              >
+                Clear all
+              </button>
+            </div>
             <ul className="space-y-1">
               {savedChats.map((chat) => (
-                <li key={chat.id}>
+                <li key={chat.id} className="group flex items-center gap-1">
                   <button
                     onClick={() => handleSelectChat(chat.id)}
-                    className={`w-full truncate rounded-lg px-2 py-2 text-left text-sm md:px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${
+                    className={`min-w-0 flex-1 truncate rounded-lg px-2 py-2 text-left text-sm md:px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] ${
                       chat.id === current.id
                         ? "bg-[#343434] text-[#f5f5f5]"
                         : t.chatItemIdle
                     }`}
                   >
                     {chat.title}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteChat(chat.id)}
+                    aria-label={`Delete chat: ${chat.title}`}
+                    title="Delete chat"
+                    className={`shrink-0 rounded-md p-2 opacity-70 transition-colors hover:text-red-500 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#888] md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 ${t.brand}`}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                      <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 4v7m4-7v7" />
+                    </svg>
                   </button>
                 </li>
               ))}
