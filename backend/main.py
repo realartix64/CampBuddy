@@ -1,6 +1,8 @@
 
 import asyncio
 import threading
+import os
+import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response
@@ -157,3 +159,37 @@ def classify(file: UploadFile = File(...)):
             status_code=400,
             detail=f"Classification failed: {error}"
         )
+
+# Offline microphone transcription: downloads the Whisper model on first setup;
+# subsequent requests run entirely on local CPU/GPU hardware.
+@app.post("/api/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    if file.content_type and not (
+        file.content_type.startswith("audio/")
+        or file.content_type == "application/octet-stream"
+    ):
+        raise HTTPException(400, "Please record an audio clip")
+    audio = await file.read(15 * 1024 * 1024 + 1)
+    if len(audio) > 15 * 1024 * 1024:
+        raise HTTPException(413, "Recording is too large (15 MB limit)")
+    if not audio:
+        raise HTTPException(400, "Recording is empty")
+
+    suffix = ".webm" if "webm" in (file.content_type or "") else ".ogg"
+    filename = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp:
+            temp.write(audio)
+            filename = temp.name
+        from speech import transcribe_file
+        text = await asyncio.to_thread(transcribe_file, filename)
+        if not text:
+            raise HTTPException(422, "No speech detected; please try again")
+        return {"text": text}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, f"Offline transcription unavailable: {exc}") from exc
+    finally:
+        if filename and os.path.exists(filename):
+            os.remove(filename)
